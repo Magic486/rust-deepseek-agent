@@ -254,6 +254,14 @@ pub fn registered_tools() -> Vec<Tool> {
             source: ToolSource::Local,
         },
         Tool {
+            name: "skill_list",
+            description: "列出当前工作区实际发现的全部 Skill；询问技能清单或数量时必须使用",
+            usage: "/skill_list",
+            parameters: empty_schema(),
+            input_format: ToolInputFormat::JsonObject,
+            source: ToolSource::Local,
+        },
+        Tool {
             name: "memory_add",
             description: "AI 自主保存稳定长期记忆，例如用户偏好、长期目标、项目事实；输入必须是 JSON",
             usage: "/memory_add {\"kind\":\"preference\",\"content\":\"用户偏好中文回答\"}",

@@ -880,6 +880,7 @@ impl Agent {
 
         match tool_name {
             "skill_load" => self.execute_skill_load(tool_input),
+            "skill_list" => Ok(self.skills.list()),
             "memory_add" => self.execute_memory_add(tool_input),
             "todo_add" => self.execute_todo_add(tool_input),
             "todo_update" => self.execute_todo_update(tool_input),
@@ -1019,6 +1020,7 @@ fn build_agent_system_prompt(
 - 如果当前目录是 Git 仓库，可以用 git_status 和 git_diff 检查变更；这两个工具只读。\n\
 - 如果用户要求搜索网页，先使用 web_search；如果用户说今天、最新、最近等相对时间，搜索关键词要结合当前日期；如果需要阅读某个搜索结果的正文，再使用 web_fetch。\n\
 - 如果用户要求根据外部资料、知识库、笔记、文档库、RAG 数据源回答，使用 rag_search，并把 input 写成适合检索的关键词。\n\
+- 如果用户询问当前有哪些 Skill、Skill 数量或 Skill 描述，必须调用 skill_list，不要根据 system prompt 自己猜测或编造列表。\n\
 - 如果任务需要独立研究、代码审查、规划拆解或 Rust 教学，可以调用 dispatch_subagent 派遣合适子代理；子代理会用独立上下文完成子任务并返回总结。\n\
 - 不要为一句话就能回答的小问题派遣子代理；不要让子代理嵌套派遣子代理。\n\
 - 如果用户表达了稳定偏好、长期目标或项目事实，使用 memory_add 保存长期记忆。\n\
