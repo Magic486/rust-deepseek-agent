@@ -194,9 +194,12 @@ exit
 - `todo_list`：AI 自主查看待办列表
 - `dispatch_subagent`：AI 自主派遣独立子代理处理研究、审查、规划或 Rust 讲解任务
 - `skill_load`：由 AI 按需加载文件化 Skill
+- `skill_list`：读取磁盘上的真实 Skill 清单，避免模型根据提示词猜测数量
 - `mcp__server__tool`：启动时从已连接 MCP Server 动态发现的外部工具
 
 文件工具只允许访问当前项目内的相对路径，避免误读或误写系统目录。当前没有删除文件工具。`repo_map` 和 `search_text` 会跳过 `target`、`.git`、`.agent_data` 等目录。`git_status`、`git_diff` 只读取仓库状态，不会提交、暂存或还原文件。`run_command` 不是任意 shell，只允许安全白名单命令；`validate_project` 是改完 Rust 代码后的综合校验入口。
+
+项目内置的 `rust-agent-project` Skill 记录了本项目从 Windows 环境准备、Agent 工具闭环到 Skill、MCP、TUI 和测试门禁的完整开发工作流，适合后续维护时按需加载。
 
 Agent 会阻止同一工具使用完全相同参数反复执行。达到单轮工具步数上限时，它会停止调用工具，并基于已有结果生成最终总结。对话上下文过长时会保留系统规则和最近的完整消息，避免请求无限膨胀；Todo 仍只属于当前会话，长期偏好由 Memory 保存。
 

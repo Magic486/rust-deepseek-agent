@@ -276,15 +276,12 @@ Skill 系统。
 
 当前 Skill：
 
-- `rust_teacher`
-- `code_reviewer`
-- `planner`
+- `rust-teacher`
+- `code-review`
+- `task-planner`
+- `rust-agent-project`
 
-后续方向：
-
-- 从 `skills/<name>/skill.toml`
-- 从 `skills/<name>/prompt.md`
-- 动态加载本地技能
+完整 Skill 正文只在 `skill_load` 后进入当前会话；查询 Skill 数量或描述时通过 `skill_list` 读取真实清单，避免模型根据启动提示词猜测。
 
 ### `src/sub_agent/`
 
@@ -526,10 +523,10 @@ src/mcp/mod.rs
 适合放入 MCP 的逻辑：
 
 - MCP Server 配置读取
-- JSON-RPC 协议结构
+- `rmcp` 持久 stdio 连接和初始化
 - tools/list
 - tools/call
-- 后续长连接和工具列表缓存
+- 超时、连接错误和运行时状态快照
 
 Agent 负责把 `McpRegistry` 发现的 `mcp__server__tool` 作为普通 function calling 工具交给模型；
 `/mcp ...` 只用于调试，不应要求用户手动描述 MCP 工具参数。
