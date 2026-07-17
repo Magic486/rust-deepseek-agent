@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前3天热点 · 2026年7月9日-11日</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f4f6f9;
+            color: #1a1a2e;
+            line-height: 1.7;
+        }
+        .container {
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 20px 16px 60px;
+        }
+
+        /* ===== 头部 ===== */
+        .header {
+            text-align: center;
+            padding: 40px 0 30px;
+            position: relative;
+        }
+        .header h1 {
+            font-size: 2rem;
+            letter-spacing: 2px;
+            color: #16213e;
+        }
+        .header .sub {
+            color: #888;
+            font-size: 0.95rem;
+            margin-top: 6px;
+        }
+        .header .sub span {
+            background: #e8edf3;
+            padding: 3px 16px;
+            border-radius: 20px;
+        }
+        .header .emoji-bg {
+            position: absolute;
+            font-size: 2.8rem;
+            opacity: 0.12;
+            user-select: none;
+            pointer-events: none;
+        }
+        .header .emoji-bg:nth-child(1) { top: 0; left: 5%; }
+        .header .emoji-bg:nth-child(2) { top: 30px; right: 6%; }
+        .header .emoji-bg:nth-child(3) { bottom: 10px; left: 20%; }
+
+        /* ===== 导航标签 ===== */
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .nav-tabs a {
+            text-decoration: none;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 0.88rem;
+            background: #fff;
+            color: #555;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            transition: all 0.2s;
+        }
+        .nav-tabs a:hover { background: #16213e; color: #fff; }
+
+        /* ===== 主头条（大图横幅） ===== */
+        .hero {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 16px;
+            padding: 28px 24px;
+            color: #fff;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 30px rgba(22, 33, 62, 0.25);
+        }
+        .hero .tag {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 3px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .hero h2 { font-size: 1.45rem; margin-bottom: 10px; line-height: 1.4; }
+        .hero p { color: rgba(255,255,255,0.8); font-size: 0.93rem; }
+        .hero .hero-meta { font-size: 0.78rem; color: rgba(255,255,255,0.5); margin-top: 10px; }
+
+        /* ===== Section 标题 ===== */
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 30px 0 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title .line {
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(90deg, #ddd, transparent);
+        }
+
+        /* ===== 新闻卡片网格 ===== */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 10px;
+        }
+        @media (max-width: 620px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        .card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 20px 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: default;
+            border-left: 4px solid transparent;
+        }
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.1);
+        }
+        .card .emoji { font-size: 1.5rem; margin-bottom: 5px; }
+        .card h3 { font-size: 1.05rem; margin-bottom: 6px; color: #16213e; }
+        .card p { font-size: 0.88rem; color: #555; }
+        .card .source { font-size: 0.75rem; color: #aaa; margin-top: 8px; }
+        .card-full { grid-column: 1 / -1; }
+
+        /* 左边框颜色 */
+        .card.red { border-left-color: #e74c3c; }
+        .card.blue { border-left-color: #3498db; }
+        .card.green { border-left-color: #2ecc71; }
+        .card.orange { border-left-color: #f39c12; }
+        .card.purple { border-left-color: #9b59b6; }
+
+        /* ===== 底部 ===== */
+        .footer {
+            text-align: center;
+            color: #aaa;
+            font-size: 0.8rem;
+            padding-top: 30px;
+            border-top: 1px solid #e8edf3;
+            margin-top: 20px;
+        }
+        .footer a { color: #888; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- ========== 头部 ========== -->
+    <div class="header">
+        <div class="emoji-bg">🌪️</div>
+        <div class="emoji-bg">🔥</div>
+        <div class="emoji-bg">🤖</div>
+        <h1>📰 前3天热点速览</h1>
+        <div class="sub"><span>2026年7月9日（周四）— 7月11日（周六）</span></div>
+        <div class="sub" style="margin-top:4px;font-size:0.82rem;color:#aaa;">🦀 Rust 学习助手 · 三大子代理联合搜索</div>
+    </div>
+
+    <!-- ========== 头条大图 ========== -->
+    <div class="hero">
+        <div class="tag">🔥 连续3天霸榜头条</div>
+        <h2>🌪️ 超强台风"巴威"登陆浙江玉环</h2>
+        <p>7月9日加强为超强台风，云系覆盖四五省；10日进入24小时警戒线，浙江福建严阵以待；11日23:20在浙江玉环登陆（中心风力13级）。上海中心千吨阻尼器开始摆动，中央气象台发布暴雨红色预警，北京转移近10万人。</p>
+        <div class="hero-meta">📡 微博#1 · 百度#1 · 抖音#1 · 澎湃 · 全平台霸榜</div>
+    </div>
+
+    <!-- ========== 导航 ========== -->
+    <div class="nav-tabs">
+        <a href="#social">🌍 综合社会</a>
+        <a href="#tech">🤖 科技前沿</a>
+        <a href="#sports">⚽ 体育娱乐</a>
+        <a href="#world">🌐 国际局势</a>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===================== 一、综合社会热点 ===================== -->
+    <!-- ============================================================ -->
+    <div class="section-title" id="social">
+        🌍 综合社会热点 <span class="line"></span>
+    </div>
+
+    <div class="grid">
+
+        <div class="card red">
+            <div class="emoji">🔥</div>
+            <h3>福建晋江鞋厂火灾致28死</h3>
+            <p>7月9日泉州晋江鞋厂重大火灾，28人死亡，213人疏散。负责人被控制，国务院安委会挂牌督办。员工千人仅12人参保引争议。</p>
+            <div class="source">微博#2 · 百度#1 · 知乎#1 · 澎湃</div>
+        </div>
+
+        <div class="card red">
+            <div class="emoji">🌧️</div>
+            <h3>广西洪灾致39人遇难</h3>
+            <p>广西持续强降雨引发严重洪涝，39人遇难、9人失联。贵港动物园上百只动物被冲走，横州蛇场被毁致村民被蛇咬伤身亡。</p>
+            <div class="source">澎湃#1 · 微博 · 抖音</div>
+        </div>
+
+        <div class="card orange">
+            <div class="emoji">🌊</div>
+            <h3>北京启动防汛二级应急响应</h3>
+            <p>北京暴雨来袭，全市转移近10万人，倡导居家办公，视情况学校停学。中央气象台时隔两年再发暴雨红色预警。</p>
+            <div class="source">微博#5 · 百度#6 · 澎湃</div>
+        </div>
+
+        <div class="card orange">
+            <div class="emoji">🌍</div>
+            <h3>四川宜宾4.8级地震</h3>
+            <p>7月9日四川宜宾高县发生4.8级地震，震源深度6千米，为广西洪灾之外的又一天灾。</p>
+            <div class="source">澎湃 · 微博 · 百度</div>
+        </div>
+
+        <div class="card green">
+            <div class="emoji">🏛️</div>
+            <h3>长沙体育局干部霸占车位事件</h3>
+            <p>长沙市体育局副处长被曝霸占他人车位，引发舆论风暴，当事人被停职。央视网评论："连车位都霸占，你还指望他为人民服务？"</p>
+            <div class="source">澎湃#2 · 知乎 · 微博连续2天热搜</div>
+        </div>
+
+        <div class="card green">
+            <div class="emoji">📄</div>
+            <h3>28起医学论文造假被通报</h3>
+            <p>国家卫健委通报28起医学论文造假、数据买卖违规案例，涉及多家医院和科研机构。</p>
+            <div class="source">澎湃#5 · 微博#26 · 知乎</div>
+        </div>
+
+        <div class="card-full card purple">
+            <div class="emoji">💻</div>
+            <h3>抖音、晋江文学城先后宕机</h3>
+            <p>7月11日晚"抖音崩了"登上微博热搜#2，同日晋江文学城也出现崩溃。两大平台同时宕机引发网友热议。</p>
+            <div class="source">微博#2（抖音崩了）· 微博#18（晋江崩了）</div>
+        </div>
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===================== 二、科技前沿 ========================= -->
+    <!-- ============================================================ -->
+    <div class="section-title" id="tech">
+        🤖 科技前沿 <span class="line"></span>
+    </div>
+
+    <div class="grid">
+
+        <div class="card blue">
+            <div class="emoji">🧠</div>
+            <h3>OpenAI 发布 GPT-5.6</h3>
+            <p>OpenAI 正式推出新一代模型 GPT-5.6。微软将其设为 Microsoft Copilot 365 的"首选模型"，引发双方关系讨论。</p>
+            <div class="source">TechCrunch · The Verge</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">⚖️</div>
+            <h3>苹果起诉 OpenAI 窃取硬件机密</h3>
+            <p>Apple 正式对 OpenAI 提起诉讼，指控其涉嫌窃取 Apple 的硬件设计机密（芯片/硬件架构相关）。</p>
+            <div class="source">The Verge · TechCrunch 头版头条</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🔵</div>
+            <h3>Meta 将于9月量产自研AI芯片"Iris"</h3>
+            <p>Meta 代号"Iris"的新一代自研 AI 芯片（MTIA 系列）将于9月开始量产，旨在减少对 Nvidia 和 AMD 的依赖。</p>
+            <div class="source">The Verge · Reuters</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🚫</div>
+            <h3>Meta 关停 Instagram AI 深度伪造功能</h3>
+            <p>在用户强烈抗议后，Meta 移除了 Instagram 上允许用户利用公开账户生成 AI 深度伪造（deepfake）的功能。</p>
+            <div class="source">The Verge 头版 · TechCrunch</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🇪🇺</div>
+            <h3>欧盟裁定 Instagram 和 Facebook"成瘾"</h3>
+            <p>欧盟监管机构认定 Meta 旗下平台具有"成瘾性"设计，可能要求 Meta 重新设计，否则面临巨额罚款。</p>
+            <div class="source">The Verge</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🔍</div>
+            <h3>Google 宣布将标注 AI 生成的广告</h3>
+            <p>Google 推出新政策，将在广告中明确披露哪些内容是由 AI 生成的，提升广告透明度。</p>
+            <div class="source">The Verge · TechCrunch</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🏢</div>
+            <h3>SK 海力士登陆纳斯达克，募资265亿美元</h3>
+            <p>SK 海力士赴美上市，募资265亿美元，超阿里创外企赴美 IPO 纪录，首日涨超20%。AI 内存需求旺盛。</p>
+            <div class="source">36氪 · IT之家 · 百度财经头条</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🛡️</div>
+            <h3>Patreon 联手 Cloudflare 阻止 AI 爬虫</h3>
+            <p>Patreon 宣布与 Cloudflare 合作，默认阻止 AI 爬虫抓取平台创作者作品用于 AI 训练，保护创作者权益。</p>
+            <div class="source">The Verge · 404 Media</div>
+        </div>
+
+        <div class="card-full card blue">
+            <div class="emoji">🦀</div>
+            <h3>Rust 生态动态：Mesh LLM 与 PgBouncer 优化</h3>
+            <p>Rust 最新稳定版 1.97.0。基于 Rust P2P 库 iroh 的去中心化 AI 项目 Mesh LLM 获 Hacker News 134 分关注；ClickHouse 团队用 Rust 优化 PgBouncer，吞吐量提升4倍。</p>
+            <div class="source">Hacker News · ClickHouse 团队</div>
+        </div>
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===================== 三、体育娱乐 ========================= -->
+    <!-- ============================================================ -->
+    <div class="section-title" id="sports">
+        ⚽ 体育 & 娱乐 <span class="line"></span>
+    </div>
+
+    <div class="grid">
+
+        <div class="card orange">
+            <div class="emoji">🏆</div>
+            <h3>世界杯1/4决赛激战正酣</h3>
+            <p>法国3-2摩洛哥、西班牙2-1比利时晋级四强。英格兰加时2-1逆转挪威，哈兰德告别世界杯。阿根廷vs瑞士焦点战即将上演。</p>
+            <div class="source">知乎 · 头条 · 微博· 百度体育</div>
+        </div>
+
+        <div class="card orange">
+            <div class="emoji">🎾</div>
+            <h3>温网女单：诺斯科娃首夺冠军</h3>
+            <p>捷克选手诺斯科娃在温网女单决赛中夺冠。亚军穆霍娃颁奖时称冠军为"我的前朋友"，成为社交媒体热门话题。</p>
+            <div class="source">百度热搜 · 中国新闻网</div>
+        </div>
+
+        <div class="card orange">
+            <div class="emoji">🎬</div>
+            <h3>周星驰《功夫女足》上映</h3>
+            <p>周星驰执导《功夫女足》上映，首日票房破2亿，猫眼开分9.4。张小斐、迪丽热巴主演。知名主持人喷电影"好难看"引发争议。</p>
+            <div class="source">微博 · 抖音 · 知乎 · 百度娱乐</div>
+        </div>
+
+        <div class="card orange">
+            <div class="emoji">📺</div>
+            <h3>上半年电视剧收视率排名出炉</h3>
+            <p>国家广播电视总局发布2026上半年国产电视剧收视报告。《主角》位列央视收视榜首，引发全网讨论。</p>
+            <div class="source">百度热搜#19 · CVB</div>
+        </div>
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===================== 四、国际局势 ========================= -->
+    <!-- ============================================================ -->
+    <div class="section-title" id="world">
+        🌐 国际局势 <span class="line"></span>
+    </div>
+
+    <div class="grid">
+
+        <div class="card red">
+            <div class="emoji">💣</div>
+            <h3>特朗普：1000枚导弹已瞄准伊朗</h3>
+            <p>美伊局势骤然紧张。美军宣布正在打击伊朗，回应霍尔木兹海峡民用船只遇袭；伊朗也宣布打击美国在中东目标。霍尔木兹海峡关闭，国际油价剧烈波动。</p>
+            <div class="source">澎湃#2 · 百度 · 头条国际</div>
+        </div>
+
+        <div class="card red">
+            <div class="emoji">🇺🇸</div>
+            <h3>美特战分队现身台岛</h3>
+            <p>美军特种作战分队被曝出现在台湾，中方回应坚决反对，引发台海局势关注。</p>
+            <div class="source">百度#14 · 澎湃 · 头条</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">🚀</div>
+            <h3>长征十号乙火箭回收试验成功</h3>
+            <p>长征十号乙运载火箭首次回收试验成功，对我国商业航天意义重大。神舟十九号航天员乘组同时完成出舱活动。</p>
+            <div class="source">知乎热榜前三 · 抖音 · IT之家</div>
+        </div>
+
+        <div class="card blue">
+            <div class="emoji">💼</div>
+            <h3>拼多多33亿元上海陆家嘴买楼</h3>
+            <p>拼多多继雄安购房后，又在上海陆家嘴斥资33亿元买下一栋楼，成为上半年上海大宗交易最大单。</p>
+            <div class="source">知乎 · IT之家 · 微博#12 · 36氪</div>
+        </div>
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===================== 底部 ================================ -->
+    <!-- ============================================================ -->
+    <div class="footer">
+        <p>📡 数据来源：微博热搜 · 百度热搜 · 澎湃新闻 · 知乎热榜 · The Verge · TechCrunch · Hacker News · 36氪 · IT之家 · 央视新闻 · 中国新闻网 等</p>
+        <p style="margin-top:4px;">🦀 由 Rust 学习助手 · 3个 Researcher 子代理并行搜索生成</p>
+        <p style="margin-top:4px;">📅 2026年7月12日 · <a href="#">前3天热点日报</a></p>
+    </div>
+
+</div>
+</body>
+</html>

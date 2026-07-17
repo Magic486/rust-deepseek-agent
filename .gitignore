@@ -1,0 +1,4 @@
+/target
+.agent_data/
+.env
+.env.*
