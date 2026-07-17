@@ -266,7 +266,7 @@ Hook 是某个关键时机自动触发的逻辑。
 
 Skill 系统。
 
-当前 Skill 是内置 prompt。
+当前 Skill 从 `.agents/skills/*/SKILL.md` 发现，并通过 `skill_load` 按需加载。
 
 适合做：
 
@@ -520,7 +520,7 @@ MCP 属于外部工具桥接，不要把具体 MCP Server 的业务逻辑写进 
 
 ```text
 src/mcp/mod.rs
-src/mcp/protocol.rs
+官方 `rmcp` SDK
 ```
 
 适合放入 MCP 的逻辑：
@@ -531,7 +531,8 @@ src/mcp/protocol.rs
 - tools/call
 - 后续长连接和工具列表缓存
 
-Agent 只负责调度 `/mcp ...` 命令或调用统一工具 `mcp_call`。
+Agent 负责把 `McpRegistry` 发现的 `mcp__server__tool` 作为普通 function calling 工具交给模型；
+`/mcp ...` 只用于调试，不应要求用户手动描述 MCP 工具参数。
 
 ## 新增 Todo 功能的流程
 
@@ -560,22 +561,16 @@ Agent 只负责调度 `/mcp ...` 命令或调用统一工具 `mcp_call`。
 
 ## 新增 Skill 的流程
 
-当前 Skill 是内置的。
+Skill 采用文件发现和按需加载，不要把业务 Skill 写死在 Rust 源码中。
 
-新增内置 Skill：
+新增 Skill：
 
-1. 修改 `src/skills/mod.rs`
-2. 在 `SkillRegistry::new()` 的 `skills` 列表中添加：
+1. 创建 `.agents/skills/<lowercase-name>/SKILL.md`。
+2. 添加 `name`、`description` YAML frontmatter，名称必须和目录名一致。
+3. 在正文中写可执行规则、适用场景和验收要求，不要复制整个项目文档。
+4. 启动 Agent 检查 `/skills`，再用自然语言验证模型是否能自主调用 `skill_load`。
 
-```rust
-Skill {
-    name: "new_skill",
-    description: "...",
-    prompt: "...",
-}
-```
-
-后续如果改成文件加载，Skill 相关逻辑仍应留在 `src/skills/`。
+完整正文只在模型调用 `skill_load` 后进入会话，避免启动时膨胀上下文。
 
 ## 新增 Sub-Agent 的流程
 

@@ -8,10 +8,8 @@ mod web;
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::Client;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::mcp::McpRegistry;
 use crate::retrieval::RetrievalIndex;
 
 pub struct Tool {
@@ -25,7 +23,6 @@ pub struct Tool {
 
 pub enum ToolSource {
     Local,
-    McpBridge,
 }
 
 #[derive(Clone, Copy)]
@@ -243,6 +240,20 @@ pub fn registered_tools() -> Vec<Tool> {
             source: ToolSource::Local,
         },
         Tool {
+            name: "skill_load",
+            description: "按需加载一个文件化 Skill；先根据名称和描述判断是否真的需要",
+            usage: "/skill_load {\"name\":\"code-review\"}",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "要加载的 Skill 名称"}
+                },
+                "required": ["name"]
+            }),
+            input_format: ToolInputFormat::JsonObject,
+            source: ToolSource::Local,
+        },
+        Tool {
             name: "memory_add",
             description: "AI 自主保存稳定长期记忆，例如用户偏好、长期目标、项目事实；输入必须是 JSON",
             usage: "/memory_add {\"kind\":\"preference\",\"content\":\"用户偏好中文回答\"}",
@@ -352,22 +363,6 @@ pub fn registered_tools() -> Vec<Tool> {
             input_format: ToolInputFormat::JsonObject,
             source: ToolSource::Local,
         },
-        Tool {
-            name: "mcp_call",
-            description: "通过已配置的 MCP Server 调用外部工具",
-            usage: "/mcp_call {\"server\":\"name\",\"tool\":\"tool_name\",\"arguments\":{}}",
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "server": {"type": "string", "description": "MCP Server 名称"},
-                    "tool": {"type": "string", "description": "MCP 工具名称"},
-                    "arguments": {"type": "object", "description": "传给 MCP 工具的 JSON 参数"}
-                },
-                "required": ["server", "tool"]
-            }),
-            input_format: ToolInputFormat::JsonObject,
-            source: ToolSource::McpBridge,
-        },
     ]
 }
 
@@ -391,7 +386,6 @@ pub async fn execute_tool(client: &Client, tool_name: &str, tool_input: &str) ->
         "web_search" => web::search(client, tool_input).await,
         "web_fetch" => web::fetch(client, tool_input).await,
         "rag_search" => rag_search(tool_input),
-        "mcp_call" => call_mcp_tool(tool_input),
         "dispatch_subagent" => Err(anyhow!(
             "dispatch_subagent 是 Agent 内部调度工具，必须由 agent.rs 执行"
         )),
@@ -441,21 +435,6 @@ fn run_echo(input: &str) -> String {
 fn rag_search(input: &str) -> Result<String> {
     let index = RetrievalIndex::load_default()?;
     Ok(index.format_search_results(input, 5))
-}
-
-fn call_mcp_tool(input: &str) -> Result<String> {
-    let request: McpToolRequest = serde_json::from_str(input)
-        .map_err(|error| anyhow!("mcp_call 输入必须是 JSON：{error}"))?;
-    let registry = McpRegistry::load_default()?;
-    registry.call_tool(&request.server, &request.tool, request.arguments)
-}
-
-#[derive(Deserialize)]
-struct McpToolRequest {
-    server: String,
-    tool: String,
-    #[serde(default)]
-    arguments: serde_json::Value,
 }
 
 fn input_schema(description: &str) -> Value {

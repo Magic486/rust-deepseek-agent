@@ -29,7 +29,9 @@ pub async fn run(mut agent: Agent) -> Result<()> {
 pub fn print_events(events: &[AgentEvent]) {
     for event in events {
         match event {
-            AgentEvent::UserMessage(_) | AgentEvent::TodoUpdated => {}
+            AgentEvent::UserMessage(_)
+            | AgentEvent::TodoUpdated
+            | AgentEvent::RuntimeSnapshot { .. } => {}
             AgentEvent::AssistantMessage(answer) => println!("\nDeepSeek：{answer}\n"),
             AgentEvent::ToolCall { name, input } => {
                 println!("\nAI 决定调用工具：{name}，输入：{input}\n");

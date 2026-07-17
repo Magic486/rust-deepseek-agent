@@ -1,0 +1,9 @@
+[
+  {
+    "name": "demo",
+    "command": "some-mcp-server",
+    "args": [],
+    "enabled": true,
+    "environment": {}
+  }
+]

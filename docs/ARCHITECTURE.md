@@ -32,7 +32,6 @@ src/
 
   mcp/
     mod.rs
-    protocol.rs
 
   todo/
     mod.rs
@@ -235,7 +234,7 @@ pub struct Message {
 - 检索：`rag_search`
 - 状态管理：`memory_add`、`todo_add`、`todo_update`、`todo_done`、`todo_list`
 - 子代理：`dispatch_subagent`
-- MCP：`mcp_call`
+- MCP：动态 `mcp__server__tool` 工具
 - 其他：`echo`、`calc`
 
 安全边界：
@@ -329,9 +328,12 @@ MCP 外部工具桥接模块。
 - 提供 `/mcp list`
 - 提供 `/mcp tools server_name`
 - 提供 `/mcp call server_name tool_name JSON`
-- 提供通用工具 `mcp_call`
+- 使用官方 `rmcp` 客户端建立 stdio 持久连接
+- 启动时调用 `tools/list` 并把结果转换为 `mcp__server__tool` 动态工具
+- 为每个 Server 保存连接、工具数量和错误状态，供 Agent 与 TUI 使用
+- 对连接和工具调用设置超时，失败 Server 不阻塞本地工具启动
 
-当前 MCP 调用使用 stdio JSON-RPC 的第一版实现。后续可以升级成长连接、缓存工具列表和更完整的协议能力。
+`/mcp ...` 仍然是调试入口；正常工作流由模型直接自主调用动态 MCP 工具。
 
 ## todo/
 
@@ -369,24 +371,16 @@ Cancelled
 
 技能系统。
 
-当前 Skill 是内置 prompt：
-
-- `rust_teacher`
-- `code_reviewer`
-- `planner`
-
-启用 Skill 后，会刷新主 Agent 的 system prompt。
-
-后续可以升级成文件加载：
+当前 Skill 从文件发现：
 
 ```text
-skills/
-  rust_teacher/
-    skill.toml
-    prompt.md
+.agents/
+  skills/
+    rust-teacher/
+      SKILL.md
 ```
 
-这样就能把技能变成可扩展能力包。
+启动时只加载 frontmatter 目录，模型通过 `skill_load` 工具按需加载正文；加载状态会同步给 TUI。
 
 ## sub_agent/
 

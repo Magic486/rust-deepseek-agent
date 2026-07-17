@@ -19,10 +19,10 @@ use crate::agent::Agent;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api_key = config::env_var("DEEPSEEK_API_KEY")
-        .context("请配置 DEEPSEEK_API_KEY 后再启动 Agent")?;
+    let api_key =
+        config::env_var("DEEPSEEK_API_KEY").context("请配置 DEEPSEEK_API_KEY 后再启动 Agent")?;
 
-    let agent = Agent::new(api_key)?;
+    let agent = Agent::new(api_key).await?;
     let mode = std::env::args().nth(1);
 
     if mode.as_deref() == Some("tui") {

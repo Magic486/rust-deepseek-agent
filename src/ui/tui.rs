@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
@@ -13,8 +13,9 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
+use tokio::sync::mpsc;
 
-use crate::agent::Agent;
+use crate::agent::{Agent, AgentEvent};
 use crate::ui::state::{TranscriptItem, TuiState, UiStatus};
 
 struct TerminalGuard;
@@ -38,12 +39,59 @@ pub async fn run(mut agent: Agent) -> Result<()> {
     let _guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
-    let mut state = TuiState::new(agent.todo_snapshot());
+    let mut state = TuiState::new(
+        agent.todo_snapshot(),
+        agent.skill_snapshot(),
+        agent.mcp_snapshot(),
+        agent.local_tool_count(),
+    );
 
-    loop {
+    let (command_tx, mut command_rx) = mpsc::channel::<String>(16);
+    let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(512);
+    let worker = tokio::spawn(async move {
+        while let Some(input) = command_rx.recv().await {
+            let sender = event_tx.clone();
+            let result = agent
+                .handle_user_input_stream(&input, |event| {
+                    sender
+                        .try_send(event.clone())
+                        .map_err(|error| anyhow!("TUI 事件通道已满：{error}"))
+                })
+                .await;
+
+            match result {
+                Ok(result) => {
+                    let _ = sender.send(agent.runtime_snapshot()).await;
+                    if result.should_exit {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = sender
+                        .send(AgentEvent::StatusChanged(crate::agent::AgentStatus::Error(
+                            error.to_string(),
+                        )))
+                        .await;
+                }
+            }
+        }
+    });
+
+    let mut running = true;
+    while running {
+        while let Ok(event) = event_rx.try_recv() {
+            state.apply_event(&event);
+            if matches!(
+                event,
+                AgentEvent::StatusChanged(crate::agent::AgentStatus::Ready)
+            ) {
+                state.scroll_to_bottom();
+            }
+        }
+
         terminal.draw(|frame| render(frame, &state))?;
 
-        if event::poll(Duration::from_millis(100))? {
+        if event::poll(Duration::from_millis(50))? {
             let Event::Key(key) = event::read()? else {
                 continue;
             };
@@ -53,8 +101,10 @@ pub async fn run(mut agent: Agent) -> Result<()> {
             }
 
             match key.code {
-                KeyCode::Esc => break,
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
+                KeyCode::Esc => running = false,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    running = false
+                }
                 KeyCode::PageUp => state.scroll_up(10),
                 KeyCode::PageDown => state.scroll_down(10),
                 KeyCode::Up => state.scroll_up(1),
@@ -68,23 +118,17 @@ pub async fn run(mut agent: Agent) -> Result<()> {
                     state.scroll_to_bottom();
 
                     if matches!(input.as_str(), "/clear" | "/new") {
-                        agent.reset_session();
-                        state.reset_session(agent.todo_snapshot());
-                        continue;
+                        state.reset_session(
+                            state.todos.clone(),
+                            state.skills.clone(),
+                            state.mcp_servers.clone(),
+                        );
                     }
-
-                    let result = agent
-                        .handle_user_input_stream(&input, |event| {
-                            state.apply_event(event);
-                            terminal.draw(|frame| render(frame, &state))?;
-                            Ok(())
-                        })
-                        .await?;
-                    state.set_todos(agent.todo_snapshot());
-                    terminal.draw(|frame| render(frame, &state))?;
-
-                    if result.should_exit {
-                        break;
+                    if !input.is_empty() {
+                        command_tx
+                            .send(input)
+                            .await
+                            .map_err(|_| anyhow!("Agent 后台任务已结束"))?;
                     }
                 }
                 KeyCode::Backspace => {
@@ -100,6 +144,8 @@ pub async fn run(mut agent: Agent) -> Result<()> {
         }
     }
 
+    drop(command_tx);
+    worker.abort();
     terminal.show_cursor()?;
     Ok(())
 }
@@ -394,7 +440,7 @@ fn render_sidebar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) 
     );
     let inner = inset(area, 2, 1);
     let (pending, done) = state.todo_counts();
-    let lines = vec![
+    let mut lines = vec![
         Line::styled(
             format!("New session - {}", state.session_id),
             Style::default()
@@ -435,17 +481,10 @@ fn render_sidebar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) 
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" available", Style::default().fg(Color::DarkGray)),
-        ]),
-        Line::from(vec![
-            Span::styled("• ", Style::default().fg(Color::Green)),
             Span::styled(
-                "mcp",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
+                format!(" {} tools", state.local_tool_count),
+                Style::default().fg(Color::DarkGray),
             ),
-            Span::styled(" bridge", Style::default().fg(Color::DarkGray)),
         ]),
         Line::raw(""),
         Line::styled(
@@ -459,6 +498,58 @@ fn render_sidebar(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) 
             Style::default().fg(Color::DarkGray),
         ),
     ];
+
+    lines.push(Line::styled(
+        "MCP",
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    ));
+    if state.mcp_servers.is_empty() {
+        lines.push(Line::styled("未配置", Style::default().fg(Color::DarkGray)));
+    } else {
+        for server in state.mcp_servers.iter().take(6) {
+            let (mark, color) = if server.connected {
+                ("• ", Color::Green)
+            } else {
+                ("× ", Color::Red)
+            };
+            let suffix = if server.connected {
+                format!(" {} tools", server.tool_count)
+            } else {
+                format!(" {}", server.error.as_deref().unwrap_or("未连接"))
+            };
+            lines.push(Line::from(vec![
+                Span::styled(mark, Style::default().fg(color)),
+                Span::styled(server.name.clone(), Style::default().fg(Color::White)),
+                Span::styled(suffix, Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        "Skills",
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    ));
+    if state.skills.is_empty() {
+        lines.push(Line::styled("未发现", Style::default().fg(Color::DarkGray)));
+    } else {
+        for skill in state.skills.iter().filter(|skill| skill.loaded).take(5) {
+            lines.push(Line::from(vec![
+                Span::styled("• ", Style::default().fg(Color::Yellow)),
+                Span::styled(skill.name.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
+        if !state.skills.iter().any(|skill| skill.loaded) {
+            lines.push(Line::styled(
+                "按需加载",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    }
 
     let mut all_lines = lines;
     all_lines.extend(todo_sidebar_lines(state));
@@ -531,8 +622,8 @@ fn inset(area: Rect, horizontal: u16, vertical: u16) -> Rect {
 }
 
 fn welcome_card_area(area: Rect) -> Rect {
-    let desired_width = area.width.saturating_sub(4).min(94).max(42);
-    let desired_height = area.height.saturating_sub(2).min(19).max(10);
+    let desired_width = area.width.saturating_sub(4).clamp(42, 94);
+    let desired_height = area.height.saturating_sub(2).clamp(10, 19);
     center_rect(area, desired_width, desired_height)
 }
 

@@ -200,7 +200,7 @@ fn build_chunks(sources: &[RagSource]) -> Result<Vec<DocumentChunk>> {
             continue;
         }
         let mut files = Vec::new();
-        collect_files(&source.path, &source.path, &mut files)?;
+        collect_files(&source.path, &mut files)?;
 
         for file in files {
             chunks.extend(chunks_from_file(source, &file)?);
@@ -210,7 +210,7 @@ fn build_chunks(sources: &[RagSource]) -> Result<Vec<DocumentChunk>> {
     Ok(chunks)
 }
 
-fn collect_files(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("读取目录失败：{}", dir.display()))?
     {
         let entry = entry?;
@@ -223,7 +223,7 @@ fn collect_files(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> Result<()
         }
 
         if path.is_dir() {
-            collect_files(root, &path, files)?;
+            collect_files(&path, files)?;
         } else if is_indexable_file(&path)? {
             files.push(path);
         }

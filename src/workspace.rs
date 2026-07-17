@@ -22,9 +22,8 @@ impl WorkspaceContext {
     pub fn prompt_section(&self) -> String {
         let mut section = format!("当前工作目录：{}。", self.root.display());
         if let Some(instructions) = self.instructions.as_deref() {
-            section.push_str(
-                "\n当前工作区提供了项目指令。执行文件修改、命令或代码审查时必须遵守：\n",
-            );
+            section
+                .push_str("\n当前工作区提供了项目指令。执行文件修改、命令或代码审查时必须遵守：\n");
             section.push_str(instructions);
         }
         section

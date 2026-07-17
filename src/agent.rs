@@ -9,7 +9,7 @@ use crate::mcp::McpRegistry;
 use crate::memory::MemoryStore;
 use crate::message::Message;
 use crate::retrieval::RetrievalIndex;
-use crate::skills::SkillRegistry;
+use crate::skills::{SkillRegistry, SkillSnapshotItem};
 use crate::sub_agent::SubAgentRegistry;
 use crate::todo::{TodoList, TodoStatus, status_label};
 use crate::tools::{self, Tool, ToolSource};
@@ -28,14 +28,29 @@ pub enum AgentStatus {
     Error(String),
 }
 
+#[derive(Clone)]
 pub enum AgentEvent {
     UserMessage(String),
     AssistantMessage(String),
-    ToolCall { name: String, input: String },
-    ToolResult { name: String, output: String },
-    ToolError { name: String, error: String },
+    ToolCall {
+        name: String,
+        input: String,
+    },
+    ToolResult {
+        name: String,
+        output: String,
+    },
+    ToolError {
+        name: String,
+        error: String,
+    },
     SystemMessage(String),
     TodoUpdated,
+    RuntimeSnapshot {
+        todos: Vec<TodoSnapshotItem>,
+        skills: Vec<SkillSnapshotItem>,
+        mcp_servers: Vec<crate::mcp::McpServerSnapshot>,
+    },
     StatusChanged(AgentStatus),
 }
 
@@ -88,6 +103,11 @@ struct DispatchSubAgentInput {
     purpose: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct SkillLoadInput {
+    name: String,
+}
+
 pub struct Agent {
     llm: LlmClient,
     tools: Vec<Tool>,
@@ -102,18 +122,18 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(api_key: String) -> Result<Self> {
+    pub async fn new(api_key: String) -> Result<Self> {
         let tools = tools::registered_tools();
         let memory = MemoryStore::load_default()?;
         let retrieval = RetrievalIndex::load_default()?;
-        let mcp = McpRegistry::load_default()?;
-        let todo = TodoList::new_session();
-        let skills = SkillRegistry::new();
-        let sub_agents = SubAgentRegistry::new();
+        let mcp = McpRegistry::load_default().await?;
         let workspace = WorkspaceContext::load()?;
+        let todo = TodoList::new_session();
+        let skills = SkillRegistry::discover(&workspace.root)?;
+        let sub_agents = SubAgentRegistry::new();
         let messages = vec![Message::new(
             "system",
-            build_agent_system_prompt(&tools, &skills, &sub_agents, &workspace),
+            build_agent_system_prompt(&tools, &skills, &sub_agents, &workspace, &mcp),
         )];
 
         Ok(Self {
@@ -224,8 +244,29 @@ impl Agent {
             .collect()
     }
 
+    pub fn skill_snapshot(&self) -> Vec<SkillSnapshotItem> {
+        self.skills.snapshot()
+    }
+
+    pub fn mcp_snapshot(&self) -> Vec<crate::mcp::McpServerSnapshot> {
+        self.mcp.snapshots()
+    }
+
+    pub fn local_tool_count(&self) -> usize {
+        self.tools.len()
+    }
+
+    pub fn runtime_snapshot(&self) -> AgentEvent {
+        AgentEvent::RuntimeSnapshot {
+            todos: self.todo_snapshot(),
+            skills: self.skill_snapshot(),
+            mcp_servers: self.mcp_snapshot(),
+        }
+    }
+
     pub fn reset_session(&mut self) {
         self.todo.clear();
+        self.skills.reset_loaded();
         self.messages = vec![Message::new(
             "system",
             build_agent_system_prompt(
@@ -233,6 +274,7 @@ impl Agent {
                 &self.skills,
                 &self.sub_agents,
                 &self.workspace,
+                &self.mcp,
             ),
         )];
     }
@@ -318,7 +360,7 @@ impl Agent {
         }
 
         if let Some(input) = user_input.strip_prefix("/mcp ") {
-            return Ok(Some(vec![self.handle_mcp_command(input)?]));
+            return Ok(Some(vec![self.handle_mcp_command(input).await?]));
         }
 
         if user_input == "/skills" {
@@ -326,7 +368,7 @@ impl Agent {
         }
 
         if let Some(skill_name) = user_input.strip_prefix("/skill use ") {
-            let message = match self.skills.activate(skill_name.trim()) {
+            let message = match self.skills.load(skill_name.trim()) {
                 Ok(message) => {
                     self.refresh_system_prompt();
                     message
@@ -453,7 +495,7 @@ impl Agent {
         ))
     }
 
-    fn handle_mcp_command(&self, input: &str) -> Result<AgentEvent> {
+    async fn handle_mcp_command(&self, input: &str) -> Result<AgentEvent> {
         if input == "list" {
             return Ok(AgentEvent::SystemMessage(self.mcp.list()));
         }
@@ -478,7 +520,7 @@ impl Agent {
 
             let arguments = serde_json::from_str(arguments).context("MCP 参数必须是 JSON")?;
             return Ok(AgentEvent::SystemMessage(
-                self.mcp.call_tool(server, tool, arguments)?,
+                self.mcp.call_tool(server, tool, arguments).await?,
             ));
         }
 
@@ -821,12 +863,23 @@ impl Agent {
                 &self.skills,
                 &self.sub_agents,
                 &self.workspace,
+                &self.mcp,
             ));
         }
     }
 
     async fn execute_agent_tool(&mut self, tool_name: &str, tool_input: &str) -> Result<String> {
+        if tool_name.starts_with("mcp__") {
+            let arguments = if tool_input.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(tool_input).context("MCP 工具参数必须是 JSON")?
+            };
+            return self.mcp.call_qualified_tool(tool_name, arguments).await;
+        }
+
         match tool_name {
+            "skill_load" => self.execute_skill_load(tool_input),
             "memory_add" => self.execute_memory_add(tool_input),
             "todo_add" => self.execute_todo_add(tool_input),
             "todo_update" => self.execute_todo_update(tool_input),
@@ -838,7 +891,8 @@ impl Agent {
     }
 
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools
+        let mut definitions: Vec<ToolDefinition> = self
+            .tools
             .iter()
             .map(|tool| {
                 ToolDefinition::function(
@@ -847,7 +901,24 @@ impl Agent {
                     tool.parameters.clone(),
                 )
             })
-            .collect()
+            .collect();
+        definitions.extend(self.mcp.tools().into_iter().map(|tool| {
+            ToolDefinition::function(
+                tool.qualified_name,
+                format!(
+                    "MCP Server `{}` 的工具 `{}`：{}",
+                    tool.server_name, tool.tool_name, tool.description
+                ),
+                tool.input_schema,
+            )
+        }));
+        definitions
+    }
+
+    fn execute_skill_load(&mut self, input: &str) -> Result<String> {
+        let request: SkillLoadInput = serde_json::from_str(input)
+            .context("skill_load 输入必须是 JSON，例如 {\"name\":\"code-review\"}")?;
+        self.skills.load(&request.name)
     }
 
     fn execute_memory_add(&mut self, input: &str) -> Result<String> {
@@ -907,6 +978,7 @@ fn build_agent_system_prompt(
     skills: &SkillRegistry,
     sub_agents: &SubAgentRegistry,
     workspace: &WorkspaceContext,
+    mcp: &McpRegistry,
 ) -> String {
     let tool_descriptions: Vec<String> = tools
         .iter()
@@ -921,10 +993,11 @@ fn build_agent_system_prompt(
         })
         .collect();
 
-    let skill_prompt = skills
-        .active_prompt()
-        .map(|prompt| format!("\n当前启用技能：\n{prompt}\n"))
-        .unwrap_or_default();
+    let mcp_descriptions = mcp
+        .tools()
+        .iter()
+        .map(|tool| format!("- {}：{}", tool.qualified_name, tool.description))
+        .collect::<Vec<_>>();
 
     format!(
         "你是一个耐心的 Rust 学习助手，回答要简洁、清楚。\n\
@@ -934,7 +1007,8 @@ fn build_agent_system_prompt(
 你可以根据用户问题自主决定是否调用工具，用户不需要输入工具命令。工具调用必须使用 API 提供的原生 function calling，不要把工具调用 JSON 当作普通文本输出。\n\
 可用工具：\n{}\n\
 可用子代理：\n{}\n\
-{}\n\
+可用 Skill（需要时调用 skill_load 按需加载完整说明）：\n{}\n\
+已连接 MCP 工具：\n{}\n\
 如果不需要工具，直接正常回答。如果需要工具，调用对应工具并等待工具结果，再继续判断下一步，直到任务完成。\n\
 工具选择规则：\n\
 - 如果用户要求查看当前项目文件或目录，使用 ls/read；大文件或需要指定范围时使用 read_lines。\n\
@@ -971,7 +1045,12 @@ Todo 执行规则：\n\
         workspace.prompt_section(),
         tool_descriptions.join("\n"),
         sub_agents.prompt_summary(),
-        skill_prompt
+        skills.catalog_for_prompt(),
+        if mcp_descriptions.is_empty() {
+            "（没有已连接的 MCP 工具）".to_string()
+        } else {
+            mcp_descriptions.join("\n")
+        }
     )
 }
 
@@ -1174,6 +1253,5 @@ fn format_tool_list(tools: &[Tool]) -> String {
 fn tool_source_label(source: &ToolSource) -> &'static str {
     match source {
         ToolSource::Local => "local",
-        ToolSource::McpBridge => "mcp",
     }
 }

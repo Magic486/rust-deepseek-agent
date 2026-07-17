@@ -149,7 +149,6 @@ exit
 /todo_update {"todos":[{"id":1,"title":"实现自动记忆","status":"in_progress"}]}
 /todo_done {"id":1}
 /todo_list
-/mcp_call {"server":"demo","tool":"hello","arguments":{}}
 ```
 
 日常使用时，更推荐用自然语言让 AI 自主决定是否调用工具：
@@ -194,7 +193,8 @@ exit
 - `todo_done`：AI 自主标记待办完成
 - `todo_list`：AI 自主查看待办列表
 - `dispatch_subagent`：AI 自主派遣独立子代理处理研究、审查、规划或 Rust 讲解任务
-- `mcp_call`：通过 `.agent_data/mcp_servers.json` 中配置的 MCP Server 调外部工具
+- `skill_load`：由 AI 按需加载文件化 Skill
+- `mcp__server__tool`：启动时从已连接 MCP Server 动态发现的外部工具
 
 文件工具只允许访问当前项目内的相对路径，避免误读或误写系统目录。当前没有删除文件工具。`repo_map` 和 `search_text` 会跳过 `target`、`.git`、`.agent_data` 等目录。`git_status`、`git_diff` 只读取仓库状态，不会提交、暂存或还原文件。`run_command` 不是任意 shell，只允许安全白名单命令；`validate_project` 是改完 Rust 代码后的综合校验入口。
 
@@ -229,10 +229,16 @@ MCP Server 配置文件：
   {
     "name": "demo",
     "command": "some-mcp-server",
-    "args": []
+    "args": [],
+    "enabled": true,
+    "environment": {}
   }
 ]
 ```
+
+Agent 启动时会使用官方 `rmcp` 客户端连接已启用的 Server，缓存 `tools/list`，并把工具注册为
+`mcp__demo__tool_name` 这类普通 function calling 工具。模型可以直接自主调用，不需要用户输入
+`/mcp call`。连接失败不会阻塞本地 Agent 启动，失败原因会显示在 TUI 右侧 MCP 状态栏。
 
 命令：
 
@@ -290,15 +296,23 @@ AI 也可以在普通对话中主动调用 `todo_add`、`todo_update`、`todo_do
 /skills
 ```
 
-启用技能：
+查看已发现技能：
 
 ```text
-/skill use rust_teacher
-/skill use code_reviewer
-/skill use planner
+/skill use rust-teacher
+/skill use code-review
+/skill use task-planner
 ```
 
-Skill 的本质是给主 Agent 增加一段额外 system prompt，让它以某种模式工作。
+Skill 文件位于：
+
+```text
+.agents/skills/<skill-name>/SKILL.md
+```
+
+每个 Skill 必须包含 `name` 和 `description` frontmatter。Agent 启动时只向模型提供技能目录，
+模型判断确实需要时自主调用 `skill_load` 加载正文。这样不会把所有技能说明无条件塞进上下文；
+`/skill use <name>` 仍然保留为手动调试入口。
 
 ## Sub-Agent 子代理
 

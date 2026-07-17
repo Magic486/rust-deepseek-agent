@@ -1,9 +1,14 @@
 use crate::agent::{AgentEvent, AgentStatus, TodoSnapshotItem};
+use crate::mcp::McpServerSnapshot;
+use crate::skills::SkillSnapshotItem;
 
 pub struct TuiState {
     pub input: String,
     pub transcript: Vec<TranscriptItem>,
     pub todos: Vec<TodoSnapshotItem>,
+    pub skills: Vec<SkillSnapshotItem>,
+    pub mcp_servers: Vec<McpServerSnapshot>,
+    pub local_tool_count: usize,
     pub status: UiStatus,
     pub command_hint: String,
     pub session_id: String,
@@ -28,11 +33,19 @@ pub enum TranscriptItem {
 }
 
 impl TuiState {
-    pub fn new(todos: Vec<TodoSnapshotItem>) -> Self {
+    pub fn new(
+        todos: Vec<TodoSnapshotItem>,
+        skills: Vec<SkillSnapshotItem>,
+        mcp_servers: Vec<McpServerSnapshot>,
+        local_tool_count: usize,
+    ) -> Self {
         Self {
             input: String::new(),
             transcript: Vec::new(),
             todos,
+            skills,
+            mcp_servers,
+            local_tool_count,
             status: UiStatus::Ready,
             command_hint: command_hint(""),
             session_id: session_id(),
@@ -73,6 +86,15 @@ impl TuiState {
                 self.transcript
                     .push(TranscriptItem::System("TodoList 已更新。".to_string()));
             }
+            AgentEvent::RuntimeSnapshot {
+                todos,
+                skills,
+                mcp_servers,
+            } => {
+                self.todos = todos.clone();
+                self.skills = skills.clone();
+                self.mcp_servers = mcp_servers.clone();
+            }
             AgentEvent::StatusChanged(status) => {
                 self.status = UiStatus::from(status);
                 match status {
@@ -90,14 +112,17 @@ impl TuiState {
         self.trim_transcript();
     }
 
-    pub fn set_todos(&mut self, todos: Vec<TodoSnapshotItem>) {
-        self.todos = todos;
-    }
-
-    pub fn reset_session(&mut self, todos: Vec<TodoSnapshotItem>) {
+    pub fn reset_session(
+        &mut self,
+        todos: Vec<TodoSnapshotItem>,
+        skills: Vec<SkillSnapshotItem>,
+        mcp_servers: Vec<McpServerSnapshot>,
+    ) {
         self.input.clear();
         self.transcript.clear();
         self.todos = todos;
+        self.skills = skills;
+        self.mcp_servers = mcp_servers;
         self.status = UiStatus::Ready;
         self.command_hint = command_hint("");
         self.session_id = session_id();

@@ -84,7 +84,9 @@ MCP 用来接外部工具。
   {
     "name": "demo",
     "command": "some-mcp-server",
-    "args": []
+    "args": [],
+    "enabled": true,
+    "environment": {}
   }
 ]
 ```
@@ -97,15 +99,12 @@ MCP 用来接外部工具。
 /mcp call demo tool_name {"key":"value"}
 ```
 
-也可以通过统一工具层调用：
+启动时会使用官方 `rmcp` 客户端连接启用的 Server，并缓存 `tools/list`。发现的工具会转换为：
 
 ```text
-/mcp_call {"server":"demo","tool":"tool_name","arguments":{"key":"value"}}
+mcp__demo__tool_name
 ```
 
-当前 MCP 是第一版 stdio JSON-RPC 调用。后续可以升级：
-
-- 长连接 MCP Client
-- 缓存 tools/list 结果
-- 把 MCP 工具动态展开到 Agent system prompt
-- 增加更多协议能力
+然后和本地工具一起传给 DeepSeek 的 function calling。模型可以自主调用 MCP 工具；`/mcp ...`
+命令只用于查看连接、查看工具和手动调试。当前实现已经具备 stdio 持久连接、连接超时、调用超时、
+错误状态和工具动态注册；后续可继续加入 Streamable HTTP 和 list-changed 通知刷新。
