@@ -175,7 +175,7 @@ fn render(frame: &mut ratatui::Frame<'_>, state: &TuiState) {
     if state.has_conversation() {
         let left_rows = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(10), Constraint::Length(5)])
+            .constraints([Constraint::Min(10), Constraint::Length(7)])
             .split(left);
 
         render_workspace(frame, left_rows[0], state);
@@ -358,7 +358,13 @@ fn render_input_preview(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiS
         Span::styled(status_text(&state.status), status_style(&state.status)),
     ]);
     let lines = if area.height >= 5 {
-        vec![Line::raw(""), input_line, Line::raw(""), meta_line]
+        vec![
+            Line::raw(""),
+            input_line,
+            Line::raw(""),
+            meta_line,
+            Line::raw(""),
+        ]
     } else {
         vec![Line::raw(""), input_line, meta_line]
     };
@@ -399,7 +405,7 @@ fn render_transcript(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiStat
 fn render_input_panel(frame: &mut ratatui::Frame<'_>, area: Rect, state: &TuiState) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Length(1)])
+        .constraints([Constraint::Length(5), Constraint::Length(2)])
         .split(area);
     render_input_preview(frame, rows[0], state);
 
@@ -670,7 +676,7 @@ fn input_preview_rows(area: Rect) -> std::rc::Rc<[Rect]> {
 fn input_text_area(input_panel_area: Rect) -> Rect {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Length(1)])
+        .constraints([Constraint::Length(5), Constraint::Length(2)])
         .split(input_panel_area);
     input_preview_text_area(rows[0])
 }
