@@ -654,9 +654,9 @@ cargo check
 
 1. 把工具系统进一步升级成 trait-based Tool。
 2. 给 RAG 增加 embedding 或更好的检索评分。
-3. 给 MCP 增加长连接和工具列表缓存。
+3. 给 MCP 增加 Streamable HTTP、list-changed 通知刷新和更细的权限确认。
 4. 给 TUI 增加更完整的 slash command 补全。
 5. 给 Memory 增加自动总结功能。
-6. 把 Skill 从内置代码迁移为本地文件加载。
+6. 给文件化 Skill 增加热重载、版本校验和 Skill 之间的组合能力。
 7. 增加子代理执行流展示和更细的子任务状态。
 8. 再实现 AgentTeam。
