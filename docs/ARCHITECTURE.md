@@ -401,17 +401,22 @@ Cancelled
 
 主 Agent 也可以通过原生 function calling 调用 `dispatch_subagent`，自动派遣合适子代理。子代理执行完成后只返回总结，不把自己的完整中间上下文塞进主 Agent。
 
+`dispatch_subagent` 同时兼容单任务字段和 `tasks` 批量字段。批量任务交给 `SubAgentRegistry::run_many`：只读角色（`researcher`、`planner`、`rust_teacher`）使用 Tokio `JoinSet` 并发执行，并通过 `Semaphore` 将并发数限制为 3；包含 `run_command` 或 `validate_project` 的角色按安全策略串行执行。结果按任务顺序聚合，执行过程通过 `SubAgentEvent` 转换为 `AgentEvent`，因此 CLI/TUI 可以实时显示开始、完成和失败状态。
+
 当前边界：
 
 - 子代理可以调用白名单内的普通工具，例如 `ls`、`read`、`web_search`、`web_fetch`、`rag_search`、`run_command`。
 - 子代理不能直接修改主 Agent 的 Memory/Todo。
 - 子代理不嵌套派遣子代理。
 - 主 Agent 负责最终决策、文件修改和 Todo/Memory 状态更新。
+- 并行子代理只处理独立的只读任务；写文件、运行命令和项目校验不与其他子代理并行。
+- 子代理结果按任务顺序汇总，事件顺序则反映真实完成顺序。
 
 后续升级方向：
 
-- 子代理之间协作
-- 多个子代理结果汇总
+- 有依赖关系的子任务 DAG 调度
+- 可取消的子代理任务和超时控制
+- 写操作的隔离工作区或审批机制
 
 ## ui/
 

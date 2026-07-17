@@ -49,6 +49,7 @@ pub struct LlmTurn {
     pub finish_reason: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct LlmClient {
     api_key: String,
     http_client: Client,

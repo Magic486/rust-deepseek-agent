@@ -42,6 +42,27 @@ pub fn print_events(events: &[AgentEvent]) {
             AgentEvent::ToolError { name, error } => {
                 println!("工具 {name} 出错：{error}\n");
             }
+            AgentEvent::SubAgentStarted {
+                id,
+                agent_type,
+                task,
+            } => {
+                println!("子代理 {id} [{agent_type}] 开始：{task}");
+            }
+            AgentEvent::SubAgentFinished {
+                id,
+                agent_type,
+                summary,
+            } => {
+                println!("子代理 {id} [{agent_type}] 完成：\n{summary}\n");
+            }
+            AgentEvent::SubAgentFailed {
+                id,
+                agent_type,
+                error,
+            } => {
+                println!("子代理 {id} [{agent_type}] 失败：{error}\n");
+            }
             AgentEvent::SystemMessage(message) => println!("\n{message}\n"),
             AgentEvent::StatusChanged(status) => match status {
                 AgentStatus::RunningTool(name) => println!("正在执行工具：{name}"),

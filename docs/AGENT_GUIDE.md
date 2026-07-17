@@ -309,16 +309,20 @@ Skill 系统。
 
 主 Agent 也可以通过 `dispatch_subagent` 工具自主派遣子代理。子代理执行完成后只返回总结，不把完整中间上下文塞进主 Agent。
 
+当存在多个互不依赖的只读任务时，优先使用 `dispatch_subagent` 的 `tasks` 数组批量派遣。`SubAgentRegistry::run_many` 会让 `researcher`、`planner`、`rust_teacher` 最多 3 个并发运行；包含 `run_command` 或 `validate_project` 的任务保持串行。每个任务的开始、完成、失败都会转成 `AgentEvent`，结果最后按任务顺序聚合。单任务字段和 `/subagent ...` 仍然可用。
+
 边界：
 
 - 子代理可以调用白名单内的普通工具。
 - 子代理不能直接修改主 Agent 的 Memory/Todo。
 - 子代理不嵌套派遣子代理。
 - 主 Agent 负责最终决策、文件修改和状态更新。
+- 并行只适用于相互独立的只读任务；不能让多个子代理同时修改同一工作区或共享状态。
 
 后续方向：
 
-- AgentTeam 调度多个 Sub-Agent
+- 在现有批量并发基础上增加依赖 DAG、取消和超时
+- 为写操作增加隔离工作区或审批流程
 
 ## 依赖方向规则
 
@@ -589,14 +593,14 @@ SubAgent {
 
 ## 什么时候需要 AgentTeam
 
-暂时不要急着实现 AgentTeam。
+当前项目已经具备轻量批量调度，不必为了并行简单任务再引入一层包装。只有在需要依赖关系、取消、重试、超时、权限或隔离工作区时，才值得把调度器继续抽象成 AgentTeam。
 
-推荐顺序：
+当前顺序：
 
 1. 手动调用 Sub-Agent。
 2. 主 Agent 通过 `dispatch_subagent` 自动派遣一个 Sub-Agent。
-3. 多个 Sub-Agent 协作。
-4. 再抽象成 AgentTeam。
+3. 主 Agent 批量派遣独立只读 Sub-Agent，并发上限为 3。
+4. 为有依赖和写操作的复杂协作抽象 AgentTeam。
 
 AgentTeam 应负责：
 

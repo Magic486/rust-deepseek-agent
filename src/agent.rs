@@ -10,10 +10,11 @@ use crate::memory::MemoryStore;
 use crate::message::Message;
 use crate::retrieval::RetrievalIndex;
 use crate::skills::{SkillRegistry, SkillSnapshotItem};
-use crate::sub_agent::SubAgentRegistry;
+use crate::sub_agent::{SubAgentEvent, SubAgentRegistry, SubAgentTask};
 use crate::todo::{TodoList, TodoStatus, status_label};
 use crate::tools::{self, Tool, ToolSource};
 use crate::workspace::WorkspaceContext;
+use tokio::sync::mpsc;
 
 const MAX_AGENT_STEPS: usize = 16;
 const MAX_REPEATED_TOOL_CALLS: usize = 2;
@@ -42,6 +43,21 @@ pub enum AgentEvent {
     },
     ToolError {
         name: String,
+        error: String,
+    },
+    SubAgentStarted {
+        id: String,
+        agent_type: String,
+        task: String,
+    },
+    SubAgentFinished {
+        id: String,
+        agent_type: String,
+        summary: String,
+    },
+    SubAgentFailed {
+        id: String,
+        agent_type: String,
         error: String,
     },
     SystemMessage(String),
@@ -97,6 +113,18 @@ struct TodoDoneInput {
 
 #[derive(Deserialize)]
 struct DispatchSubAgentInput {
+    #[serde(default)]
+    agent_type: Option<String>,
+    #[serde(default)]
+    task: Option<String>,
+    #[serde(default)]
+    purpose: Option<String>,
+    #[serde(default)]
+    tasks: Vec<DispatchSubAgentTaskInput>,
+}
+
+#[derive(Deserialize)]
+struct DispatchSubAgentTaskInput {
     agent_type: String,
     task: String,
     #[serde(default)]
@@ -772,7 +800,14 @@ impl Agent {
                     AgentEvent::StatusChanged(AgentStatus::RunningTool(tool_name.clone())),
                 )?;
 
-                match self.execute_agent_tool(&tool_name, &tool_input).await {
+                let tool_result = if tool_name == "dispatch_subagent" {
+                    self.execute_agent_tool_with_subagent_events(&tool_input, events, observer)
+                        .await
+                } else {
+                    self.execute_agent_tool(&tool_name, &tool_input).await
+                };
+
+                match tool_result {
                     Ok(tool_output) => {
                         self.messages
                             .push(Message::tool_result(tool_call.id, tool_output.clone()));
@@ -868,6 +903,32 @@ impl Agent {
         }
     }
 
+    async fn execute_agent_tool_with_subagent_events(
+        &self,
+        tool_input: &str,
+        events: &mut Vec<AgentEvent>,
+        observer: &mut impl FnMut(&AgentEvent) -> Result<()>,
+    ) -> Result<String> {
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let mut dispatch = Box::pin(self.execute_dispatch_subagent(tool_input, sender));
+
+        loop {
+            tokio::select! {
+                result = &mut dispatch => {
+                    while let Ok(event) = receiver.try_recv() {
+                        emit_sub_agent_event(events, observer, event)?;
+                    }
+                    return result;
+                }
+                event = receiver.recv() => {
+                    if let Some(event) = event {
+                        emit_sub_agent_event(events, observer, event)?;
+                    }
+                }
+            }
+        }
+    }
+
     async fn execute_agent_tool(&mut self, tool_name: &str, tool_input: &str) -> Result<String> {
         if tool_name.starts_with("mcp__") {
             let arguments = if tool_input.trim().is_empty() {
@@ -886,7 +947,10 @@ impl Agent {
             "todo_update" => self.execute_todo_update(tool_input),
             "todo_done" => self.execute_todo_done(tool_input),
             "todo_list" => Ok(self.todo.list()),
-            "dispatch_subagent" => self.execute_dispatch_subagent(tool_input).await,
+            "dispatch_subagent" => {
+                let (sender, _receiver) = mpsc::unbounded_channel();
+                self.execute_dispatch_subagent(tool_input, sender).await
+            }
             _ => tools::execute_tool(self.llm.http_client(), tool_name, tool_input).await,
         }
     }
@@ -954,24 +1018,70 @@ impl Agent {
         self.todo.done(request.id)
     }
 
-    async fn execute_dispatch_subagent(&self, input: &str) -> Result<String> {
-        let request: DispatchSubAgentInput = serde_json::from_str(input)
-            .context("dispatch_subagent 输入必须是 JSON，例如 {\"agent_type\":\"researcher\",\"task\":\"搜索资料\"}")?;
-        let purpose = request
-            .purpose
-            .as_deref()
-            .filter(|purpose| !purpose.trim().is_empty())
-            .unwrap_or("未填写 purpose");
-        let answer = self
-            .sub_agents
-            .run(&request.agent_type, &self.llm, &request.task, &self.tools)
-            .await?;
+    async fn execute_dispatch_subagent(
+        &self,
+        input: &str,
+        events: mpsc::UnboundedSender<SubAgentEvent>,
+    ) -> Result<String> {
+        let tasks = parse_dispatch_subagent_tasks(input)?;
 
-        Ok(format!(
-            "子代理 `{}` 已完成。\n目的：{}\n任务：{}\n\n{}",
-            request.agent_type, purpose, request.task, answer
-        ))
+        let task_count = tasks.len();
+        let results = self
+            .sub_agents
+            .run_many(tasks, self.llm.clone(), self.tools.clone(), events)
+            .await;
+
+        let mut output = format!(
+            "已调度 {task_count} 个子代理；独立只读任务最多同时运行 3 个，包含命令执行的任务按安全策略串行。"
+        );
+        for result in results {
+            output.push_str(&format!(
+                "\n\n[{}] {}\n目的：{}\n任务：{}\n",
+                result.id, result.agent_type, result.purpose, result.task
+            ));
+            match result.summary {
+                Ok(summary) => output.push_str(&summary),
+                Err(error) => output.push_str(&format!("子代理执行失败：{error}")),
+            }
+        }
+
+        Ok(output)
     }
+}
+
+fn parse_dispatch_subagent_tasks(input: &str) -> Result<Vec<SubAgentTask>> {
+    let request: DispatchSubAgentInput = serde_json::from_str(input).context(
+        "dispatch_subagent 输入必须是 JSON，例如 {\"tasks\":[{\"agent_type\":\"researcher\",\"task\":\"搜索资料\"}]}"
+    )?;
+
+    if request.tasks.is_empty() {
+        let agent_type = request
+            .agent_type
+            .context("单个子代理任务必须提供 agent_type")?;
+        let task = request.task.context("单个子代理任务必须提供 task")?;
+        return Ok(vec![SubAgentTask {
+            order: 0,
+            id: "subagent-1".to_string(),
+            agent_type,
+            task,
+            purpose: request
+                .purpose
+                .unwrap_or_else(|| "未填写 purpose".to_string()),
+        }]);
+    }
+
+    Ok(request
+        .tasks
+        .into_iter()
+        .enumerate()
+        .map(|(index, task)| SubAgentTask {
+            order: index,
+            id: format!("subagent-{}", index + 1),
+            agent_type: task.agent_type,
+            task: task.task,
+            purpose: task.purpose.unwrap_or_else(|| "未填写 purpose".to_string()),
+        })
+        .collect())
 }
 
 fn build_agent_system_prompt(
@@ -1022,6 +1132,7 @@ fn build_agent_system_prompt(
 - 如果用户要求根据外部资料、知识库、笔记、文档库、RAG 数据源回答，使用 rag_search，并把 input 写成适合检索的关键词。\n\
 - 如果用户询问当前有哪些 Skill、Skill 数量或 Skill 描述，必须调用 skill_list，不要根据 system prompt 自己猜测或编造列表。\n\
 - 如果任务需要独立研究、代码审查、规划拆解或 Rust 教学，可以调用 dispatch_subagent 派遣合适子代理；子代理会用独立上下文完成子任务并返回总结。\n\
+- 如果有多个相互独立的只读子任务，优先使用 tasks 数组一次派遣多个子代理；researcher、planner、rust_teacher 等只读任务最多同时运行 3 个。包含 run_command 或 validate_project 的任务按安全策略串行。\n\
 - 不要为一句话就能回答的小问题派遣子代理；不要让子代理嵌套派遣子代理。\n\
 - 如果用户表达了稳定偏好、长期目标或项目事实，使用 memory_add 保存长期记忆。\n\
 - 如果用户提出明确任务、计划、待执行事项或要求你规划步骤，使用 todo_add 创建待办，或用 todo_update 全量维护任务状态。\n\
@@ -1223,6 +1334,43 @@ fn emit_event(
     Ok(())
 }
 
+fn emit_sub_agent_event(
+    events: &mut Vec<AgentEvent>,
+    observer: &mut impl FnMut(&AgentEvent) -> Result<()>,
+    event: SubAgentEvent,
+) -> Result<()> {
+    let event = match event {
+        SubAgentEvent::Started {
+            id,
+            agent_type,
+            task,
+        } => AgentEvent::SubAgentStarted {
+            id,
+            agent_type,
+            task,
+        },
+        SubAgentEvent::Finished {
+            id,
+            agent_type,
+            summary,
+        } => AgentEvent::SubAgentFinished {
+            id,
+            agent_type,
+            summary,
+        },
+        SubAgentEvent::Failed {
+            id,
+            agent_type,
+            error,
+        } => AgentEvent::SubAgentFailed {
+            id,
+            agent_type,
+            error,
+        },
+    };
+    emit_event(events, observer, event)
+}
+
 fn observed_result(
     source_events: Vec<AgentEvent>,
     observer: &mut impl FnMut(&AgentEvent) -> Result<()>,
@@ -1255,5 +1403,37 @@ fn format_tool_list(tools: &[Tool]) -> String {
 fn tool_source_label(source: &ToolSource) -> &'static str {
     match source {
         ToolSource::Local => "local",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_dispatch_subagent_tasks;
+
+    #[test]
+    fn parses_legacy_single_subagent_request() {
+        let tasks = parse_dispatch_subagent_tasks(
+            r#"{"agent_type":"planner","task":"拆分任务","purpose":"制定计划"}"#,
+        )
+        .expect("single request should parse");
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "subagent-1");
+        assert_eq!(tasks[0].agent_type, "planner");
+        assert_eq!(tasks[0].purpose, "制定计划");
+    }
+
+    #[test]
+    fn parses_and_preserves_batch_order() {
+        let tasks = parse_dispatch_subagent_tasks(
+            r#"{"tasks":[{"agent_type":"researcher","task":"搜索资料"},{"agent_type":"rust_teacher","task":"解释结果"}]}"#,
+        )
+        .expect("batch request should parse");
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].order, 0);
+        assert_eq!(tasks[0].id, "subagent-1");
+        assert_eq!(tasks[1].order, 1);
+        assert_eq!(tasks[1].id, "subagent-2");
     }
 }

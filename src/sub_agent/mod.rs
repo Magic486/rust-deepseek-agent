@@ -1,9 +1,13 @@
 use anyhow::{Result, anyhow};
+use std::sync::Arc;
+use tokio::sync::{Semaphore, mpsc};
+use tokio::task::JoinSet;
 
 use crate::llm::{LlmClient, ToolDefinition};
 use crate::message::Message;
 use crate::tools::{self, Tool};
 
+#[derive(Clone, Copy)]
 pub struct SubAgent {
     pub name: &'static str,
     pub aliases: &'static [&'static str],
@@ -13,9 +17,50 @@ pub struct SubAgent {
     pub max_turns: usize,
 }
 
+#[derive(Clone)]
 pub struct SubAgentRegistry {
     agents: Vec<SubAgent>,
 }
+
+#[derive(Clone, Debug)]
+pub struct SubAgentTask {
+    pub order: usize,
+    pub id: String,
+    pub agent_type: String,
+    pub task: String,
+    pub purpose: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum SubAgentEvent {
+    Started {
+        id: String,
+        agent_type: String,
+        task: String,
+    },
+    Finished {
+        id: String,
+        agent_type: String,
+        summary: String,
+    },
+    Failed {
+        id: String,
+        agent_type: String,
+        error: String,
+    },
+}
+
+#[derive(Debug)]
+pub struct SubAgentResult {
+    pub order: usize,
+    pub id: String,
+    pub agent_type: String,
+    pub task: String,
+    pub purpose: String,
+    pub summary: std::result::Result<String, String>,
+}
+
+const MAX_PARALLEL_SUB_AGENTS: usize = 3;
 
 impl SubAgentRegistry {
     pub fn new() -> Self {
@@ -219,6 +264,123 @@ impl SubAgentRegistry {
         ))
     }
 
+    pub async fn run_many(
+        &self,
+        tasks: Vec<SubAgentTask>,
+        llm: LlmClient,
+        tools: Vec<Tool>,
+        events: mpsc::UnboundedSender<SubAgentEvent>,
+    ) -> Vec<SubAgentResult> {
+        let semaphore = Arc::new(Semaphore::new(MAX_PARALLEL_SUB_AGENTS));
+        let mut parallel_tasks = Vec::new();
+        let mut serial_tasks = Vec::new();
+
+        for task in tasks {
+            if self.is_parallel_safe(&task.agent_type) {
+                parallel_tasks.push(task);
+            } else {
+                serial_tasks.push(task);
+            }
+        }
+
+        let mut join_set = JoinSet::new();
+        for task in parallel_tasks {
+            let registry = self.clone();
+            let llm = llm.clone();
+            let tools = tools.clone();
+            let semaphore = Arc::clone(&semaphore);
+            let events = events.clone();
+
+            join_set.spawn(async move {
+                let _permit = semaphore
+                    .acquire_owned()
+                    .await
+                    .expect("sub-agent semaphore should remain alive");
+                registry
+                    .run_one_with_events(task, &llm, &tools, &events)
+                    .await
+            });
+        }
+
+        let mut results = Vec::new();
+        while let Some(joined) = join_set.join_next().await {
+            match joined {
+                Ok(result) => results.push(result),
+                Err(error) => results.push(SubAgentResult {
+                    order: usize::MAX,
+                    id: "unknown".to_string(),
+                    agent_type: "unknown".to_string(),
+                    task: "并行子代理任务".to_string(),
+                    purpose: String::new(),
+                    summary: Err(format!("子代理任务崩溃：{error}")),
+                }),
+            }
+        }
+
+        for task in serial_tasks {
+            results.push(self.run_one_with_events(task, &llm, &tools, &events).await);
+        }
+
+        results.sort_by_key(|result| result.order);
+        results
+    }
+
+    fn is_parallel_safe(&self, name: &str) -> bool {
+        self.resolve(name)
+            .map(|agent| {
+                !agent
+                    .tool_names
+                    .iter()
+                    .any(|tool| matches!(*tool, "run_command" | "validate_project"))
+            })
+            .unwrap_or(false)
+    }
+
+    async fn run_one_with_events(
+        &self,
+        task: SubAgentTask,
+        llm: &LlmClient,
+        tools: &[Tool],
+        events: &mpsc::UnboundedSender<SubAgentEvent>,
+    ) -> SubAgentResult {
+        let _ = events.send(SubAgentEvent::Started {
+            id: task.id.clone(),
+            agent_type: task.agent_type.clone(),
+            task: task.task.clone(),
+        });
+
+        let summary = self
+            .run(&task.agent_type, llm, &task.task, tools)
+            .await
+            .map_err(|error| error.to_string());
+
+        match &summary {
+            Ok(summary) => {
+                let _ = events.send(SubAgentEvent::Finished {
+                    id: task.id.clone(),
+                    agent_type: task.agent_type.clone(),
+                    summary: summary.clone(),
+                });
+            }
+            Err(error) => {
+                let _ = events.send(SubAgentEvent::Failed {
+                    id: task.id.clone(),
+                    agent_type: task.agent_type.clone(),
+                    error: error.clone(),
+                });
+            }
+        }
+
+        SubAgentResult {
+            order: task.order,
+            id: task.id,
+            agent_type: task.agent_type,
+            task: task.task,
+            purpose: task.purpose,
+            summary,
+        }
+    }
+
     fn resolve(&self, name: &str) -> Option<&SubAgent> {
         self.agents
             .iter()
@@ -239,4 +401,20 @@ fn sub_agent_system_prompt(agent: &SubAgent) -> String {
         agent.system_prompt,
         agent.tool_names.join(", ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SubAgentRegistry;
+
+    #[test]
+    fn only_read_only_subagents_are_parallel_safe() {
+        let registry = SubAgentRegistry::new();
+
+        assert!(registry.is_parallel_safe("researcher"));
+        assert!(registry.is_parallel_safe("planner"));
+        assert!(registry.is_parallel_safe("rust_teacher"));
+        assert!(!registry.is_parallel_safe("reviewer"));
+        assert!(!registry.is_parallel_safe("unknown"));
+    }
 }

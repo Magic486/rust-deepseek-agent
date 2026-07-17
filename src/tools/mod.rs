@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::retrieval::RetrievalIndex;
 
+#[derive(Clone)]
 pub struct Tool {
     pub name: &'static str,
     pub description: &'static str,
@@ -21,6 +22,7 @@ pub struct Tool {
     pub source: ToolSource,
 }
 
+#[derive(Clone, Copy)]
 pub enum ToolSource {
     Local,
 }
@@ -348,8 +350,8 @@ pub fn registered_tools() -> Vec<Tool> {
         },
         Tool {
             name: "dispatch_subagent",
-            description: "派遣一个独立子代理处理研究、审查、规划或 Rust 讲解任务；子代理有独立上下文和工具白名单，完成后只把总结返回主 Agent",
-            usage: "/dispatch_subagent {\"agent_type\":\"researcher\",\"task\":\"搜索 Rust async 资料\",\"purpose\":\"收集背景\"}",
+            description: "派遣一个或多个独立子代理；researcher、planner、rust_teacher 等只读任务可以并行，包含命令执行的任务会按安全策略串行",
+            usage: "/dispatch_subagent {\"tasks\":[{\"agent_type\":\"researcher\",\"task\":\"搜索 Rust async 资料\"},{\"agent_type\":\"planner\",\"task\":\"规划实现步骤\"}]}",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -364,9 +366,21 @@ pub fn registered_tools() -> Vec<Tool> {
                     "purpose": {
                         "type": "string",
                         "description": "为什么要派遣这个子代理，便于主 Agent 后续汇总"
+                    },
+                    "tasks": {
+                        "type": "array",
+                        "description": "多个相互独立的子任务；适合只读研究、规划、教学和资料整理",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "agent_type": {"type": "string"},
+                                "task": {"type": "string"},
+                                "purpose": {"type": "string"}
+                            },
+                            "required": ["agent_type", "task"]
+                        }
                     }
-                },
-                "required": ["agent_type", "task"]
+                }
             }),
             input_format: ToolInputFormat::JsonObject,
             source: ToolSource::Local,

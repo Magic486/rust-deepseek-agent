@@ -342,6 +342,18 @@ Skill 文件位于：
 
 日常使用时不需要手动输入 `/subagent`。主 Agent 可以通过 `dispatch_subagent` 工具自主派遣合适的子代理。子代理有独立上下文、工具白名单和最大执行轮数；它不会直接修改主 Agent 的 Memory/Todo，而是把结论返回给主 Agent 汇总。
 
+当任务可以拆成多个相互独立的只读工作时，主 Agent 可以通过 `tasks` 数组一次派遣多个子代理。`researcher`、`planner`、`rust_teacher` 等只读任务最多同时运行 3 个；包含 `run_command` 或 `validate_project` 的任务（当前主要是 `reviewer`）会按安全策略串行执行。每个子代理的开始、完成或失败都会显示在 CLI/TUI 中，最终结果按任务提交顺序交给主 Agent 汇总。旧版单任务 JSON 和 `/subagent ...` 命令仍然兼容。
+
+```json
+{
+  "tasks": [
+    {"agent_type": "researcher", "task": "查找相关资料", "purpose": "补充背景"},
+    {"agent_type": "planner", "task": "拆解实现步骤", "purpose": "形成计划"},
+    {"agent_type": "rust_teacher", "task": "解释关键 Rust 概念", "purpose": "帮助学习"}
+  ]
+}
+```
+
 ## 学习重点
 
 这个项目目前最重要的结构是：

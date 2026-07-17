@@ -78,6 +78,33 @@ impl TuiState {
                 self.transcript
                     .push(TranscriptItem::Error(format!("工具 {name} 出错：{error}")));
             }
+            AgentEvent::SubAgentStarted {
+                id,
+                agent_type,
+                task,
+            } => {
+                self.transcript.push(TranscriptItem::System(format!(
+                    "子代理 {id} [{agent_type}] 开始：{task}"
+                )));
+            }
+            AgentEvent::SubAgentFinished {
+                id,
+                agent_type,
+                summary,
+            } => {
+                self.transcript.push(TranscriptItem::System(format!(
+                    "子代理 {id} [{agent_type}] 完成：\n{summary}"
+                )));
+            }
+            AgentEvent::SubAgentFailed {
+                id,
+                agent_type,
+                error,
+            } => {
+                self.transcript.push(TranscriptItem::Error(format!(
+                    "子代理 {id} [{agent_type}] 失败：{error}"
+                )));
+            }
             AgentEvent::SystemMessage(content) => {
                 self.transcript
                     .push(TranscriptItem::System(content.clone()));
